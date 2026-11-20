@@ -1,0 +1,290 @@
+{
+  "name": "excel to mail",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -352,
+        -48
+      ],
+      "id": "e98d450a-2841-48b0-ac3c-9e3c794c3567",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1rptpHhv_87d7geNEu6TqhhxiMmL8uK_7gX6c__CM4FE",
+          "mode": "list",
+          "cachedResultName": "Daily_work_order_dummy_30_rows",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1rptpHhv_87d7geNEu6TqhhxiMmL8uK_7gX6c__CM4FE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1613536796,
+          "mode": "list",
+          "cachedResultName": "Daily work order (1)",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1rptpHhv_87d7geNEu6TqhhxiMmL8uK_7gX6c__CM4FE/edit#gid=1613536796"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -176,
+        -176
+      ],
+      "id": "0e136502-4613-4ead-99c0-2231745125f2",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "pfx9WtpHoEfmdavK",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "10aa30eb-b419-414d-beea-6471c9806b08",
+              "leftValue": "={{ $json.Status }}",
+              "rightValue": "Pending",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "6b2c7100-6f8a-47b0-b2b0-c54669fcc643",
+              "leftValue": "={{ $json.Status }}",
+              "rightValue": "Approved",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        -16,
+        -16
+      ],
+      "id": "8be20927-9c55-47ce-ba27-55ece1223417",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst rows = $input.all();\nconst now = new Date();\n\nconst reportDate = now.toLocaleDateString(\"en-GB\", {\n  timeZone: \"Asia/Dhaka\",\n  day: \"2-digit\",\n  month: \"short\",\n  year: \"numeric\"\n});\n\nconst generatedAt = now.toLocaleString(\"en-GB\", {\n  timeZone: \"Asia/Dhaka\",\n  day: \"2-digit\",\n  month: \"short\",\n  year: \"numeric\",\n  hour: \"2-digit\",\n  minute: \"2-digit\",\n  hour12: true\n});\n\n// Unique report reference for each execution\nconst reportId =\n  \"WOR-\" +\n  new Date().toLocaleDateString(\"en-CA\", {\n    timeZone: \"Asia/Dhaka\"\n  }).replace(/-/g, \"\") +\n  \"-\" +\n  String(Date.now()).slice(-6);\n\n// Escape values before inserting spreadsheet content into HTML\nfunction esc(value) {\n  return String(value ?? \"\").replace(/[&<>\"']/g, c => ({\n    \"&\": \"&amp;\",\n    \"<\": \"&lt;\",\n    \">\": \"&gt;\",\n    '\"': \"&quot;\",\n    \"'\": \"&#39;\"\n  })[c]);\n}\n\nfunction getStatus(status) {\n  const s = String(status ?? \"\").trim().toLowerCase();\n\n  if (s === \"approved\") {\n    return { label: \"Approved\", cls: \"approved\" };\n  }\n\n  if (s === \"cancelled\") {\n    return { label: \"Cancelled\", cls: \"cancelled\" };\n  }\n\n  if (s === \"pending\") {\n    return { label: \"Pending\", cls: \"pending\" };\n  }\n\n  return {\n    label: String(status ?? \"\").trim() || \"Not specified\",\n    cls: \"other\"\n  };\n}\n\n// Assumes input contains all work orders to include in the report.\nconst total = rows.length;\n\nconst pending = rows.filter(r =>\n  String(r.json[\"Status\"] ?? \"\").trim().toLowerCase() === \"pending\"\n).length;\n\nconst approved = rows.filter(r =>\n  String(r.json[\"Status\"] ?? \"\").trim().toLowerCase() === \"approved\"\n).length;\n\nconst cancelled = rows.filter(r =>\n  String(r.json[\"Status\"] ?? \"\").trim().toLowerCase() === \"cancelled\"\n).length;\n\nconst tableRows = rows.map((row, index) => {\n  const status = getStatus(row.json[\"Status\"]);\n\n  return `\n    <tr>\n      <td class=\"serial\">${index + 1}</td>\n      <td class=\"job-no\">${esc(row.json[\"Job No\"])}</td>\n      <td class=\"client\">${esc(row.json[\"Client Name\"])}</td>\n      <td class=\"status-cell\">\n        <span class=\"badge ${status.cls}\">${esc(status.label)}</span>\n      </td>\n    </tr>\n  `;\n}).join(\"\");\n\nconst emptyRow = `\n  <tr>\n    <td colspan=\"4\" class=\"empty-row\">\n      No work orders are available for this report.\n    </td>\n  </tr>\n`;\n\nconst html = `<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n\n<title>Daily Work Order Report</title>\n\n<style>\n  @page {\n    size: A4 portrait;\n    margin: 14mm 12mm 16mm 12mm;\n  }\n\n  * {\n    box-sizing: border-box;\n  }\n\n  body {\n    margin: 0;\n    color: #243247;\n    background: #ffffff;\n    font-family: Arial, Helvetica, sans-serif;\n    font-size: 10pt;\n    line-height: 1.55;\n    -webkit-print-color-adjust: exact;\n    print-color-adjust: exact;\n  }\n\n  .report {\n    width: 100%;\n    max-width: 100%;\n    margin: 0 auto;\n  }\n\n  .header {\n    background: #12345a;\n    color: #ffffff;\n    padding: 25px 26px;\n    border-bottom: 5px solid #159a9c;\n  }\n\n  .department {\n    margin: 0 0 8px;\n    color: #9ce8e3;\n    font-size: 9pt;\n    font-weight: 700;\n    letter-spacing: 1.3px;\n    text-transform: uppercase;\n  }\n\n  h1 {\n    margin: 0;\n    color: #ffffff;\n    font-size: 23pt;\n    line-height: 1.25;\n    letter-spacing: -0.4px;\n  }\n\n  .header-subtitle {\n    margin: 9px 0 0;\n    color: #dbe7f5;\n    font-size: 10pt;\n  }\n\n  .meta {\n    display: table;\n    width: 100%;\n    table-layout: fixed;\n    margin: 0 0 23px;\n    background: #f3f7fb;\n    border: 1px solid #dce5ef;\n  }\n\n  .meta-item {\n    display: table-cell;\n    width: 50%;\n    padding: 12px 15px;\n    vertical-align: top;\n  }\n\n  .meta-item + .meta-item {\n    border-left: 1px solid #dce5ef;\n  }\n\n  .meta-label {\n    display: block;\n    color: #697b90;\n    font-size: 8pt;\n    font-weight: 700;\n    text-transform: uppercase;\n    letter-spacing: .5px;\n  }\n\n  .meta-value {\n    display: block;\n    margin-top: 3px;\n    color: #183b63;\n    font-size: 10pt;\n    font-weight: 700;\n    overflow-wrap: anywhere;\n  }\n\n  .content {\n    padding: 22px 24px 18px;\n  }\n\n  .greeting {\n    margin: 0 0 8px;\n    font-size: 12pt;\n    font-weight: 700;\n    color: #183b63;\n  }\n\n  .intro {\n    margin: 0 0 22px;\n    color: #526176;\n    line-height: 1.8;\n  }\n\n  h2 {\n    margin: 23px 0 12px;\n    padding-bottom: 8px;\n    color: #183b63;\n    font-size: 13pt;\n    border-bottom: 2px solid #dce8f2;\n    break-after: avoid;\n    page-break-after: avoid;\n  }\n\n  .summary {\n    display: table;\n    width: 100%;\n    table-layout: fixed;\n    border-spacing: 6px 0;\n    margin: 0 0 22px;\n  }\n\n  .summary-cell {\n    display: table-cell;\n    padding: 14px 5px;\n    text-align: center;\n    border: 1px solid #e0e8f0;\n    border-radius: 5px;\n    vertical-align: middle;\n  }\n\n  .summary-total { background: #eaf2ff; }\n  .summary-pending { background: #fff5dd; }\n  .summary-approved { background: #e7f7ee; }\n  .summary-cancelled { background: #fdecec; }\n\n  .summary-number {\n    display: block;\n    font-size: 22pt;\n    line-height: 1.25;\n    font-weight: 700;\n  }\n\n  .summary-total .summary-number { color: #2458a6; }\n  .summary-pending .summary-number { color: #996515; }\n  .summary-approved .summary-number { color: #187344; }\n  .summary-cancelled .summary-number { color: #a92c32; }\n\n  .summary-label {\n    display: block;\n    margin-top: 5px;\n    color: #45556b;\n    font-size: 8pt;\n    font-weight: 700;\n  }\n\n  .table-wrap {\n    width: 100%;\n  }\n\n  table.work-orders {\n    width: 100%;\n    table-layout: fixed;\n    border-collapse: collapse;\n    font-size: 9pt;\n  }\n\n  .work-orders thead {\n    display: table-header-group;\n  }\n\n  .work-orders tfoot {\n    display: table-footer-group;\n  }\n\n  .work-orders th {\n    padding: 11px 8px;\n    background: #183b63;\n    color: #ffffff;\n    text-align: left;\n    font-size: 8.5pt;\n    font-weight: 700;\n    border: 1px solid #183b63;\n  }\n\n  .work-orders td {\n    padding: 10px 8px;\n    vertical-align: middle;\n    border: 1px solid #dce3eb;\n    overflow-wrap: anywhere;\n    word-wrap: break-word;\n  }\n\n  .work-orders tbody tr:nth-child(even) {\n    background: #f5f8fc;\n  }\n\n  .work-orders tr {\n    break-inside: avoid;\n    page-break-inside: avoid;\n  }\n\n  .col-sl { width: 9%; }\n  .col-job { width: 25%; }\n  .col-client { width: 42%; }\n  .col-status { width: 24%; }\n\n  .serial {\n    text-align: center;\n    color: #66758a;\n  }\n\n  .job-no {\n    color: #183b63;\n    font-weight: 700;\n  }\n\n  .status-cell {\n    text-align: center;\n  }\n\n  .badge {\n    display: inline-block;\n    padding: 4px 8px;\n    border-radius: 12px;\n    font-size: 7.5pt;\n    font-weight: 700;\n    white-space: nowrap;\n  }\n\n  .approved { background: #dcfce7; color: #166534; }\n  .pending { background: #fef3c7; color: #92400e; }\n  .cancelled { background: #fee2e2; color: #991b1b; }\n  .other { background: #e5e7eb; color: #374151; }\n\n  .empty-row {\n    padding: 25px 10px !important;\n    text-align: center;\n    color: #6b7280;\n  }\n\n  .closing {\n    margin: 23px 0 0;\n    color: #526176;\n    line-height: 1.8;\n  }\n\n  .signature {\n    margin-top: 18px;\n    color: #34465b;\n    line-height: 1.8;\n  }\n\n  .signature strong {\n    color: #183b63;\n  }\n\n  .footer {\n    margin-top: 20px;\n    padding: 15px 24px;\n    background: #f3f7fb;\n    border-top: 1px solid #dce5ef;\n    text-align: center;\n    color: #68788c;\n    font-size: 8pt;\n    line-height: 1.7;\n  }\n\n  .footer strong {\n    color: #183b63;\n  }\n\n  @media screen {\n    body {\n      background: #edf1f5;\n      padding: 20px;\n    }\n\n    .report {\n      max-width: 900px;\n      border: 1px solid #dce5ef;\n      box-shadow: 0 4px 18px rgba(22, 42, 65, .08);\n    }\n  }\n\n  @media print {\n    body {\n      padding: 0;\n      background: #ffffff;\n    }\n\n    .report {\n      max-width: none;\n      border: none;\n      box-shadow: none;\n    }\n\n    .header,\n    .summary-cell,\n    .work-orders th,\n    .footer {\n      -webkit-print-color-adjust: exact;\n      print-color-adjust: exact;\n    }\n  }\n</style>\n</head>\n\n<body>\n<div class=\"report\">\n\n  <header class=\"header\">\n    <p class=\"department\">Software Department</p>\n    <h1>Daily Work Order Report</h1>\n    <p class=\"header-subtitle\">\n      Official operational report · Work Order Management System\n    </p>\n  </header>\n\n  <main class=\"content\">\n\n    <section class=\"meta\">\n      <div class=\"meta-item\">\n        <span class=\"meta-label\">Report Reference</span>\n        <span class=\"meta-value\">${esc(reportId)}</span>\n      </div>\n      <div class=\"meta-item\">\n        <span class=\"meta-label\">Reporting Date</span>\n        <span class=\"meta-value\">${esc(reportDate)}</span>\n      </div>\n    </section>\n\n    <p class=\"greeting\">Dear Team,</p>\n\n    <p class=\"intro\">\n      Please find below the latest Daily Work Order Report issued by the\n      Software Department. This document summarizes the work orders and\n      their recorded processing statuses as of the report generation time.\n    </p>\n\n    <h2>Executive Summary</h2>\n\n    <section class=\"summary\">\n      <div class=\"summary-cell summary-total\">\n        <span class=\"summary-number\">${total}</span>\n        <span class=\"summary-label\">Total Orders</span>\n      </div>\n      <div class=\"summary-cell summary-pending\">\n        <span class=\"summary-number\">${pending}</span>\n        <span class=\"summary-label\">Pending</span>\n      </div>\n      <div class=\"summary-cell summary-approved\">\n        <span class=\"summary-number\">${approved}</span>\n        <span class=\"summary-label\">Approved</span>\n      </div>\n      <div class=\"summary-cell summary-cancelled\">\n        <span class=\"summary-number\">${cancelled}</span>\n        <span class=\"summary-label\">Cancelled</span>\n      </div>\n    </section>\n\n    <section class=\"meta\">\n      <div class=\"meta-item\">\n        <span class=\"meta-label\">Generated On</span>\n        <span class=\"meta-value\">${esc(generatedAt)} (Bangladesh Time)</span>\n      </div>\n      <div class=\"meta-item\">\n        <span class=\"meta-label\">Prepared By</span>\n        <span class=\"meta-value\">Software Department</span>\n      </div>\n    </section>\n\n    <h2>Work Order Details</h2>\n\n    <div class=\"table-wrap\">\n      <table class=\"work-orders\">\n        <colgroup>\n          <col class=\"col-sl\">\n          <col class=\"col-job\">\n          <col class=\"col-client\">\n          <col class=\"col-status\">\n        </colgroup>\n\n        <thead>\n          <tr>\n            <th>SL</th>\n            <th>Job No</th>\n            <th>Client Name</th>\n            <th>Status</th>\n          </tr>\n        </thead>\n\n        <tbody>\n          ${tableRows || emptyRow}\n        </tbody>\n      </table>\n    </div>\n\n    <p class=\"closing\">\n      Please review the work orders listed above and take the necessary\n      actions in accordance with the applicable operational procedures.\n      For any discrepancies, please verify the source records.\n    </p>\n\n    <div class=\"signature\">\n      Best regards,<br>\n      <strong>Software Department</strong><br>\n    </div>\n\n  </main>\n\n  <footer class=\"footer\">\n    <strong>Official System-Generated Report</strong><br>\n    This report was generated automatically for internal operational review.\n    Please refer to the source system for the latest record updates.<br>\n    Report Reference: ${esc(reportId)}\n  </footer>\n\n</div>\n</body>\n</html>`;\n\nreturn [{\n  json: {\n    html,\n    reportId,\n    reportDate,\n    generatedAt,\n    pdfFileName: `Work_Order_Report_${reportDate}.pdf`\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        -176
+      ],
+      "id": "57232682-7004-492c-adcb-abd2262602a1",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "URL/HTML to PDF",
+        "convertType": "htmlToPDF",
+        "html": "={{ $('Code in JavaScript').first().json.html }}",
+        "advancedOptions": {
+          "name": "={{\"Daily_Work_Order_Report_\" + $now.toFormat(\"yyyy-MM-dd\") + \".pdf\"}}"
+        }
+      },
+      "type": "n8n-nodes-pdfco.PDFco Api",
+      "typeVersion": 1.1,
+      "position": [
+        320,
+        -16
+      ],
+      "id": "5fca103b-61ce-4d4d-926f-2228e32a0ac8",
+      "name": "PDF.co",
+      "credentials": {
+        "pdfcoOAuth2Api": {
+          "id": "aFEEdvmNXI3AHGRb",
+          "name": "PDF.co account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{$json.url}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        496,
+        -16
+      ],
+      "id": "b9614ac6-8080-4739-a0ab-21ae477a82e9",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        656,
+        -160
+      ],
+      "id": "e1011e85-f7ff-4a68-bd6c-994a0dc64288",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "sendTo": "nhs31387@gmail.com",
+        "subject": "=={{\"Daily Work Order Report - \" + $now.toFormat(\"dd MMM yyyy\")}}",
+        "message": "=={{$json.html}}",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {}
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        -16
+      ],
+      "id": "0ed5a6e2-6080-485d-ab0a-f92486153813",
+      "name": "Send a message",
+      "webhookId": "31b9c10d-f3a0-410b-9b02-a77a6ec0e54b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "BeCi8FOZU8b0vhxX",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "PDF.co",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF.co": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "003511ff-3272-4216-80eb-e988af1ece44",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a9b994a24d1dde5cfb9c11f1b48c169621eccfd13d0f437b329d83b92155ca8b"
+  },
+  "nodeGroups": [],
+  "id": "VFraMSEHAYZPCaOo",
+  "tags": []
+}
